@@ -87,7 +87,8 @@ func (b *Bridge) readLoop(conn *websocket.Conn) {
 	for {
 		var resp BridgeResponse
 		if err := wsjson.Read(ctx, conn, &resp); err != nil {
-			if !errors.Is(err, context.Canceled) {
+			status := websocket.CloseStatus(err)
+			if !errors.Is(err, context.Canceled) && status != websocket.StatusNormalClosure && status != websocket.StatusGoingAway {
 				bridgeLogger.Printf("read error: %v", err)
 			}
 			return

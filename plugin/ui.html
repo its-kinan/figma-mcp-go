@@ -142,12 +142,16 @@
       }
 
       function applyUrl(url) {
+        if (WS_URL === url && socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+          return;
+        }
         WS_URL = url;
         if (wsInput) wsInput.value = url;
         try {
           localStorage.setItem("figma_mcp_ws", url);
         } catch (e) {}
         updateActiveBtn();
+        disconnect();
         connect();
       }
 
@@ -173,6 +177,7 @@
 
       var socket = null;
       var reconnectTimer = null;
+      var isConnecting = false;
 
       function setConnected(state) {
         var dot = document.getElementById("dot");
@@ -188,43 +193,61 @@
         document.getElementById("selection-count").textContent = status.selectionCount + " node(s)";
       }
 
-      function connect() {
+      function disconnect() {
         if (reconnectTimer !== null) {
           clearTimeout(reconnectTimer);
           reconnectTimer = null;
         }
-
         if (socket) {
+          socket.onopen = null;
           socket.onclose = null;
           socket.onerror = null;
-          try { socket.close(); } catch (e) {}
+          socket.onmessage = null;
+          try {
+            socket.close(1000, "user_switch");
+          } catch (e) {}
           socket = null;
         }
+        isConnecting = false;
+        setConnected(false);
+      }
 
+      function connect() {
+        if (isConnecting) return;
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+          return;
+        }
+
+        disconnect();
+
+        isConnecting = true;
         console.log("[Figma MCP] Connecting to " + WS_URL);
         try {
           socket = new WebSocket(WS_URL);
         } catch (err) {
           console.error("[Figma MCP] WebSocket init error:", err);
+          isConnecting = false;
           setConnected(false);
           return;
         }
 
         socket.onopen = function () {
+          isConnecting = false;
           console.log("[Figma MCP] Connected successfully to " + WS_URL);
           setConnected(true);
           parent.postMessage({ pluginMessage: { type: "ui-ready" } }, "*");
         };
 
         socket.onclose = function (e) {
-          console.log("[Figma MCP] Socket closed:", e.code, e.reason);
+          isConnecting = false;
+          console.log("[Figma MCP] Socket closed: code=" + e.code + " reason=" + e.reason);
           setConnected(false);
           socket = null;
 
-          // If another tab or connection replaced this one, do not loop reconnect!
-          if (e.reason === "replaced by new connection") {
+          // Never auto-reconnect on clean close (1000), replaced connection, or user switch!
+          if (e.code === 1000 || e.reason === "replaced by new connection" || e.reason === "user_switch") {
             var badgeText = document.getElementById("badge-text");
-            if (badgeText) badgeText.textContent = "Paused (Other Tab)";
+            if (badgeText) badgeText.textContent = "Paused";
             return;
           }
 
@@ -237,6 +260,7 @@
         };
 
         socket.onerror = function (e) {
+          isConnecting = false;
           console.error("[Figma MCP] Socket error:", e);
           setConnected(false);
         };
