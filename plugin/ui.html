@@ -189,7 +189,17 @@
       }
 
       function connect() {
-        if (socket) socket.close();
+        if (reconnectTimer !== null) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+
+        if (socket) {
+          socket.onclose = null;
+          socket.onerror = null;
+          try { socket.close(); } catch (e) {}
+          socket = null;
+        }
 
         console.log("[Figma MCP] Connecting to " + WS_URL);
         try {
@@ -210,6 +220,14 @@
           console.log("[Figma MCP] Socket closed:", e.code, e.reason);
           setConnected(false);
           socket = null;
+
+          // If another tab or connection replaced this one, do not loop reconnect!
+          if (e.reason === "replaced by new connection") {
+            var badgeText = document.getElementById("badge-text");
+            if (badgeText) badgeText.textContent = "Paused (Other Tab)";
+            return;
+          }
+
           if (reconnectTimer === null) {
             reconnectTimer = setTimeout(function () {
               reconnectTimer = null;
