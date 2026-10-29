@@ -11,6 +11,8 @@ server.json
 # Go build artifacts
 /bin/
 /dist/
+figma-mcp-go
+*.zip
 
 # Plugin
 plugin/node_modules/
