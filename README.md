@@ -91,12 +91,20 @@ Watch the video:
 | `get_local_components` | All components in the file |
 | `get_annotations` | Dev-mode annotations |
 
-### Export
+### Export & Vector
 
 | Tool | Description |
 |------|-------------|
+| `get_node_svg` | Direct vector SVG string export of any frame, icon, or node |
 | `get_screenshot` | Base64 image export of any node |
 | `save_screenshots` | Export images to disk (server-side, no API call) |
+
+### Code-to-Design & Canvas Write-back
+
+| Tool | Description |
+|------|-------------|
+| `create_component` | Instantiate Auto Layout components with custom padding, gap, fills, borders, and text |
+| `execute_code` | Execute arbitrary async JavaScript directly inside the Figma plugin sandbox via `figma.*` and `helpers` |
 
 ---
 
