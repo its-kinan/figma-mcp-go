@@ -88,6 +88,17 @@
     <div class="container">
       <div class="info-section">
         <div class="info-row">
+          <span class="info-label">Mode</span>
+          <div style="display:flex;gap:4px;">
+            <button type="button" id="btn-tunnel" style="background:#333;color:#eee;border:1px solid #555;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;">Tunnel (Direct)</button>
+            <button type="button" id="btn-local" style="background:#222;color:#aaa;border:1px solid #444;border-radius:4px;padding:2px 8px;font-size:10px;cursor:pointer;">Localhost</button>
+          </div>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Bridge</span>
+          <input id="ws-url-input" type="text" style="background:#2a2a2a;color:#eee;border:1px solid #444;border-radius:4px;padding:2px 6px;font-size:11px;width:150px;font-family:inherit;" />
+        </div>
+        <div class="info-row">
           <span class="info-label">File</span>
           <span class="info-value" id="file-name">—</span>
         </div>
@@ -108,8 +119,57 @@
       </div>
     </div>
     <script>
-      var WS_URL = "ws://localhost:1994/ws";
+      var TUNNEL_URL = "wss://joseph-cell-nerve-vertex.trycloudflare.com/ws";
+      var LOCAL_URL = "ws://localhost:1994/ws";
+      var DEFAULT_WS_URL = TUNNEL_URL;
+      var WS_URL = DEFAULT_WS_URL;
+      try {
+        WS_URL = localStorage.getItem("figma_mcp_ws") || DEFAULT_WS_URL;
+      } catch (e) {}
       var RECONNECT_DELAY_MS = 1500;
+
+      var wsInput = document.getElementById("ws-url-input");
+      var btnTunnel = document.getElementById("btn-tunnel");
+      var btnLocal = document.getElementById("btn-local");
+
+      function updateActiveBtn() {
+        if (!btnTunnel || !btnLocal) return;
+        var isLocal = WS_URL.indexOf("localhost") !== -1 || WS_URL.indexOf("127.0.0.1") !== -1;
+        btnTunnel.style.background = isLocal ? "#222" : "#2563eb";
+        btnTunnel.style.color = isLocal ? "#aaa" : "#fff";
+        btnLocal.style.background = isLocal ? "#2563eb" : "#222";
+        btnLocal.style.color = isLocal ? "#fff" : "#aaa";
+      }
+
+      function applyUrl(url) {
+        WS_URL = url;
+        if (wsInput) wsInput.value = url;
+        try {
+          localStorage.setItem("figma_mcp_ws", url);
+        } catch (e) {}
+        updateActiveBtn();
+        connect();
+      }
+
+      if (btnTunnel) {
+        btnTunnel.addEventListener("click", function () { applyUrl(TUNNEL_URL); });
+      }
+      if (btnLocal) {
+        btnLocal.addEventListener("click", function () { applyUrl(LOCAL_URL); });
+      }
+
+      if (wsInput) {
+        wsInput.value = WS_URL;
+        updateActiveBtn();
+        wsInput.addEventListener("change", function () {
+          applyUrl(wsInput.value.trim() || DEFAULT_WS_URL);
+        });
+        wsInput.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") {
+            wsInput.blur();
+          }
+        });
+      }
 
       var socket = null;
       var reconnectTimer = null;
@@ -131,14 +191,23 @@
       function connect() {
         if (socket) socket.close();
 
-        socket = new WebSocket(WS_URL);
+        console.log("[Figma MCP] Connecting to " + WS_URL);
+        try {
+          socket = new WebSocket(WS_URL);
+        } catch (err) {
+          console.error("[Figma MCP] WebSocket init error:", err);
+          setConnected(false);
+          return;
+        }
 
         socket.onopen = function () {
+          console.log("[Figma MCP] Connected successfully to " + WS_URL);
           setConnected(true);
           parent.postMessage({ pluginMessage: { type: "ui-ready" } }, "*");
         };
 
-        socket.onclose = function () {
+        socket.onclose = function (e) {
+          console.log("[Figma MCP] Socket closed:", e.code, e.reason);
           setConnected(false);
           socket = null;
           if (reconnectTimer === null) {
@@ -149,7 +218,8 @@
           }
         };
 
-        socket.onerror = function () {
+        socket.onerror = function (e) {
+          console.error("[Figma MCP] Socket error:", e);
           setConnected(false);
         };
 

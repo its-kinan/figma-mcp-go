@@ -8,7 +8,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -21,10 +23,22 @@ type Follower struct {
 }
 
 // NewFollower creates a Follower pointed at the given leader base URL.
+// ponytail: automatically detects Tailscale userspace proxy (127.0.0.1:1055); upgrade to dynamic route table if multi-proxy mesh.
 func NewFollower(leaderURL string) *Follower {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if strings.Contains(leaderURL, "100.") || os.Getenv("ALL_PROXY") != "" {
+		proxyURLStr := os.Getenv("ALL_PROXY")
+		if proxyURLStr == "" {
+			proxyURLStr = "socks5://127.0.0.1:1055"
+		}
+		if pURL, err := url.Parse(proxyURLStr); err == nil {
+			transport.Proxy = http.ProxyURL(pURL)
+		}
+	}
 	return &Follower{
 		leaderURL: leaderURL,
 		client: &http.Client{
+			Transport: transport,
 			// 35s > 30s bridge timeout — gives the leader time to time out first
 			Timeout: 35 * time.Second,
 		},

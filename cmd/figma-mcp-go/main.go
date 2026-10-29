@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/mark3labs/mcp-go/server"
@@ -18,17 +19,31 @@ var version = "dev"
 
 var logger = log.New(os.Stderr, "", 0)
 
-const port = 1994
+const defaultPort = 1994
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	node := internal.NewNode(port)
-	election := internal.NewElection(port, node)
+	port := defaultPort
+	if p := os.Getenv("PORT"); p != "" {
+		if v, err := strconv.Atoi(p); err == nil && v > 0 {
+			port = v
+		}
+	}
 
-	if err := election.Start(ctx); err != nil {
-		logger.Fatalf("election start: %v", err)
+	node := internal.NewNode(port)
+	var election *internal.Election
+
+	remoteURL := os.Getenv("FIGMA_REMOTE_URL")
+	if remoteURL != "" {
+		node.SetRemoteLeader(remoteURL)
+		logger.Printf("Configured as remote follower to %s", remoteURL)
+	} else {
+		election = internal.NewElection(port, node)
+		if err := election.Start(ctx); err != nil {
+			logger.Fatalf("election start: %v", err)
+		}
 	}
 
 	logger.Printf("Starting figma-mcp-go %s (role: %s)", version, node.RoleName())
@@ -40,7 +55,9 @@ func main() {
 	go func() {
 		<-ctx.Done()
 		logger.Printf("Shutting down...")
-		election.Stop()
+		if election != nil {
+			election.Stop()
+		}
 		node.Stop()
 	}()
 

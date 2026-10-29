@@ -356,6 +356,154 @@ const handleRequest = async (request) => {
         return { type: request.type, requestId: request.requestId, data: { count: matchingNodes.length, matchingNodes, searchedTypes: types } };
       }
 
+      case "execute_code": {
+        const code = (request.params && request.params.code) || "";
+        if (!code) throw new Error("code parameter is required");
+
+        const helpers = {
+          loadFont: async (family = "Inter", style = "Regular") => {
+            await figma.loadFontAsync({ family, style });
+          },
+          rgb: (r, g, b) => ({
+            r: r > 1 ? r / 255 : r,
+            g: g > 1 ? g / 255 : g,
+            b: b > 1 ? b / 255 : b,
+          }),
+          hex: (hex) => {
+            hex = hex.replace("#", "");
+            if (hex.length === 3) hex = hex.split("").map((c) => c + c).join("");
+            const num = parseInt(hex, 16);
+            return {
+              r: ((num >> 16) & 255) / 255,
+              g: ((num >> 8) & 255) / 255,
+              b: (num & 255) / 255,
+            };
+          },
+        };
+
+        const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+        const fn = new AsyncFunction("figma", "helpers", code);
+        const result = await fn(figma, helpers);
+
+        let out = result;
+        if (result && typeof result === "object" && "type" in result && "id" in result) {
+          out = serializeNode(result);
+        }
+
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: out !== undefined ? out : { success: true },
+        };
+      }
+
+      case "create_component": {
+        const params = request.params || {};
+        const name = params.name || "Component";
+        const layoutMode = (params.layoutMode || "VERTICAL").toUpperCase();
+        const padding = typeof params.padding === "number" ? params.padding : 16;
+        const gap = typeof params.gap === "number" ? params.gap : 12;
+        const cornerRadius = typeof params.cornerRadius === "number" ? params.cornerRadius : 8;
+
+        try {
+          await figma.loadFontAsync({ family: "Inter", style: "Regular" });
+          await figma.loadFontAsync({ family: "Inter", style: "Medium" });
+          await figma.loadFontAsync({ family: "Inter", style: "Bold" });
+        } catch (e) {
+          // ignore font load error
+        }
+
+        const comp = figma.createComponent();
+        comp.name = name;
+        comp.cornerRadius = cornerRadius;
+
+        if (layoutMode === "HORIZONTAL" || layoutMode === "VERTICAL") {
+          comp.layoutMode = layoutMode;
+          comp.paddingLeft = comp.paddingRight = comp.paddingTop = comp.paddingBottom = padding;
+          comp.itemSpacing = gap;
+          comp.primaryAxisSizingMode = "AUTO";
+          comp.counterAxisSizingMode = "AUTO";
+        }
+
+        if (params.fill) {
+          const hex = params.fill.replace("#", "");
+          const num = parseInt(hex, 16);
+          comp.fills = [{
+            type: "SOLID",
+            color: {
+              r: ((num >> 16) & 255) / 255,
+              g: ((num >> 8) & 255) / 255,
+              b: (num & 255) / 255,
+            },
+          }];
+        }
+
+        if (params.stroke) {
+          const hex = params.stroke.replace("#", "");
+          const num = parseInt(hex, 16);
+          comp.strokes = [{
+            type: "SOLID",
+            color: {
+              r: ((num >> 16) & 255) / 255,
+              g: ((num >> 8) & 255) / 255,
+              b: (num & 255) / 255,
+            },
+          }];
+          comp.strokeWeight = params.strokeWeight || 1;
+        }
+
+        if (Array.isArray(params.children)) {
+          for (const item of params.children) {
+            if (item.type === "TEXT") {
+              const textNode = figma.createText();
+              textNode.characters = item.text || "Text";
+              if (item.fontSize) textNode.fontSize = item.fontSize;
+              if (item.fill) {
+                const hex = item.fill.replace("#", "");
+                const num = parseInt(hex, 16);
+                textNode.fills = [{
+                  type: "SOLID",
+                  color: {
+                    r: ((num >> 16) & 255) / 255,
+                    g: ((num >> 8) & 255) / 255,
+                    b: (num & 255) / 255,
+                  },
+                }];
+              }
+              comp.appendChild(textNode);
+            }
+          }
+        }
+
+        comp.x = figma.viewport.center.x - (comp.width || 120) / 2;
+        comp.y = figma.viewport.center.y - (comp.height || 40) / 2;
+        figma.currentPage.selection = [comp];
+        figma.viewport.scrollAndZoomIntoView([comp]);
+
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: serializeNode(comp),
+        };
+      }
+
+      case "get_node_svg": {
+        const nodeId = (request.nodeIds && request.nodeIds[0]) || (request.params && request.params.nodeId);
+        if (!nodeId) throw new Error("nodeId is required for get_node_svg");
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node) throw new Error(`Node not found: ${nodeId}`);
+        const svgBytes = await node.exportAsync({ format: "SVG" });
+        let svgString = "";
+        for (let i = 0; i < svgBytes.length; i++) {
+          svgString += String.fromCharCode(svgBytes[i]);
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { id: node.id, name: node.name, svg: svgString },
+        };
+      }
+
       default:
         throw new Error(`Unknown request type: ${request.type}`);
     }

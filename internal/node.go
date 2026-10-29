@@ -103,6 +103,21 @@ func (n *Node) BecomeFollower() {
 	nodeLogger.Printf("became FOLLOWER")
 }
 
+// SetRemoteLeader configures the node as a Follower targeting an explicit remote leader URL.
+// ponytail: static remote target config; upgrade to multi-leader discovery if remote peers fail over.
+func (n *Node) SetRemoteLeader(leaderURL string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	if n.leader != nil {
+		n.leader.Stop()
+		n.leader = nil
+	}
+	n.follower = NewFollower(leaderURL)
+	n.role = RoleFollower
+	nodeLogger.Printf("configured as FOLLOWER targeting %s", leaderURL)
+}
+
 // Stop shuts down the node regardless of role.
 func (n *Node) Stop() {
 	n.mu.Lock()

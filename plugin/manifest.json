@@ -6,8 +6,18 @@
   "ui": "ui.html",
   "permissions": [],
   "networkAccess": {
-    "allowedDomains": ["ws://localhost:1994", "https://avatars.githubusercontent.com"],
-    "reasoning": "Connects to local MCP server via WebSocket to stream Figma document data to AI tools"
+    "allowedDomains": [
+      "ws://localhost:1994",
+      "wss://joseph-cell-nerve-vertex.trycloudflare.com",
+      "*.trycloudflare.com",
+      "https://avatars.githubusercontent.com"
+    ],
+    "devAllowedDomains": [
+      "ws://localhost:1994",
+      "wss://joseph-cell-nerve-vertex.trycloudflare.com",
+      "*.trycloudflare.com"
+    ],
+    "reasoning": "Connects to MCP bridge server via WebSocket to stream Figma document data to AI tools"
   },
   "documentAccess": "dynamic-page",
   "editorType": ["figma", "dev"],

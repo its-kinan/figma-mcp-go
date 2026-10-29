@@ -172,6 +172,45 @@ func RegisterTools(s *server.MCPServer, node *Node) {
 	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		return executeSaveScreenshots(ctx, node, req)
 	})
+
+	// ── Code-to-Design & Vector Export ───────────────────────────────────
+
+	s.AddTool(mcp.NewTool("execute_code",
+		mcp.WithDescription("Execute arbitrary JavaScript in the Figma plugin sandbox with access to the figma.* API (figma.createComponent, figma.createFrame, figma.createText, figma.currentPage, etc.). Returns the evaluated result."),
+		mcp.WithString("code",
+			mcp.Required(),
+			mcp.Description("JavaScript code to execute in Figma. Async functions supported. Use 'return ...' to return data."),
+		),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		code, _ := req.Params.Arguments["code"].(string)
+		resp, err := node.Send(ctx, "execute_code", nil, map[string]interface{}{"code": code})
+		return renderResponse(resp, err)
+	})
+
+	s.AddTool(mcp.NewTool("create_component",
+		mcp.WithDescription("Create a new component or frame on the active Figma canvas with Auto Layout, styling, and text."),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Component name")),
+		mcp.WithString("layoutMode", mcp.Description("HORIZONTAL, VERTICAL, or NONE (default VERTICAL)")),
+		mcp.WithNumber("padding", mcp.Description("Padding in pixels (default 16)")),
+		mcp.WithNumber("gap", mcp.Description("Item spacing / gap in pixels (default 12)")),
+		mcp.WithString("fill", mcp.Description("Hex background color e.g. #2563eb")),
+		mcp.WithString("stroke", mcp.Description("Hex border color e.g. #e2e8f0")),
+		mcp.WithNumber("strokeWeight", mcp.Description("Border stroke weight in pixels")),
+		mcp.WithNumber("cornerRadius", mcp.Description("Corner radius in pixels (default 8)")),
+		mcp.WithArray("children", mcp.Description("Array of child objects: { type: 'TEXT', text: '...', fontSize: 14, fill: '#fff' }")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		resp, err := node.Send(ctx, "create_component", nil, req.Params.Arguments)
+		return renderResponse(resp, err)
+	})
+
+	s.AddTool(mcp.NewTool("get_node_svg",
+		mcp.WithDescription("Export a vector, icon, or frame node directly as an SVG string."),
+		mcp.WithString("nodeId", mcp.Required(), mcp.Description("Node ID in colon format e.g. '4029:12345'")),
+	), func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		nodeID, _ := req.Params.Arguments["nodeId"].(string)
+		resp, err := node.Send(ctx, "get_node_svg", []string{nodeID}, nil)
+		return renderResponse(resp, err)
+	})
 }
 
 // RegisterPrompts registers MCP prompts on the server.
